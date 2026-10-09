@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Party Planning - PocketSmart AI</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+<div class="page">
+<div class="card wide">
+    <h2>Party Planning Recommendation</h2>
+    <form id="partyForm">
+        <input type="hidden" id="user_id" value="{{ user_id }}">
+        <input id="budget" type="number" placeholder="Budget in INR" required>
+        <input id="event_type" placeholder="Event Type" required>
+        <input id="guests" type="number" placeholder="Number of Guests" required>
+        <input id="theme" placeholder="Theme" required>
+        <button type="submit">Get Recommendation</button>
+    </form>
+    <div id="result" class="result"></div>
+    <a href="/dashboard?user_id={{ user_id }}">Back to Dashboard</a>
+</div>
+</div>
+<script src="/static/js/recommendations.js"></script>
+</body>
+</html>

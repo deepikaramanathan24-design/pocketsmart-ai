@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Home Interior - PocketSmart AI</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+<div class="page">
+<div class="card wide">
+    <h2>Home Interior Recommendation</h2>
+    <form id="homeForm">
+        <input type="hidden" id="user_id" value="{{ user_id }}">
+        <input id="budget" type="number" placeholder="Budget in INR" required>
+        <input id="room" placeholder="Room (e.g. Bedroom)" required>
+        <input id="style" placeholder="Preferred Style (e.g. Modern)" required>
+        <button type="submit">Get Recommendation</button>
+    </form>
+    <div id="result" class="result"></div>
+    <a href="/dashboard?user_id={{ user_id }}">Back to Dashboard</a>
+</div>
+</div>
+<script src="/static/js/recommendations.js"></script>
+</body>
+</html>

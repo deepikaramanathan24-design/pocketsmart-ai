@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Dashboard - PocketSmart AI</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+<div class="container">
+    <div class="topbar">
+        <div>
+            <h1>PocketSmart AI</h1>
+            <p>Welcome, {{ user[1] }}</p>
+        </div>
+        <a class="button danger" href="/logout">Logout</a>
+    </div>
+
+    <div class="grid">
+        <a class="module" href="/home?user_id={{ user[0] }}">
+            <h2>Home Interior</h2>
+            <p>Budget-based home interior recommendations.</p>
+        </a>
+
+        <a class="module" href="/party?user_id={{ user[0] }}">
+            <h2>Party Planning</h2>
+            <p>Plan your party within your budget.</p>
+        </a>
+
+        <a class="module" href="/jewelry?user_id={{ user[0] }}">
+            <h2>Jewelry</h2>
+            <p>Get jewelry recommendations for your occasion.</p>
+        </a>
+
+        <a class="module" href="/history?user_id={{ user[0] }}">
+            <h2>Recommendation History</h2>
+            <p>View your previous recommendations.</p>
+        </a>
+    </div>
+</div>
+</body>
+</html>

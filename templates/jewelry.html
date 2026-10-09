@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Jewelry - PocketSmart AI</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+<div class="page">
+<div class="card wide">
+    <h2>Jewelry Recommendation</h2>
+    <form id="jewelryForm">
+        <input type="hidden" id="user_id" value="{{ user_id }}">
+        <input id="budget" type="number" placeholder="Budget in INR" required>
+        <input id="jewelry_type" placeholder="Jewelry Type" required>
+        <input id="occasion" placeholder="Occasion" required>
+        <input id="style" placeholder="Style" required>
+        <label for="outfit_image">Upload Outfit Image (Optional)</label>
+        <input id="outfit_image" type="file" accept="image/*">
+        <button type="submit">Get Recommendation</button>
+    </form>
+    <div id="result" class="result"></div>
+    <a href="/dashboard?user_id={{ user_id }}">Back to Dashboard</a>
+</div>
+</div>
+<script src="/static/js/recommendations.js"></script>
+</body>
+</html>

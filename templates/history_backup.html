@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Recommendation History - PocketSmart AI</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+
+<body>
+
+<div class="page">
+
+    <div class="card wide">
+
+        <div class="topbar">
+            <h2>Recommendation History</h2>
+
+            <a class="button" href="/dashboard?user_id={{ user_id }}">
+                Dashboard
+            </a>
+        </div>
+
+        {% if recommendations %}
+
+            {% for item in recommendations %}
+
+            <div class="history-item">
+
+                <h3>{{ item[1] }}</h3>
+
+                <p>
+                    <strong>Budget:</strong>
+                    ₹{{ item[2] }}
+                </p>
+
+                <p>
+                    <strong>Input:</strong>
+                    {{ item[3] }}
+                </p>
+
+                <div class="recommendation">
+                    <strong>Recommendation:</strong>
+                    <pre>{{ item[4] }}</pre>
+                </div>
+
+                <p class="date">
+                    {{ item[5] }}
+                </p>
+
+                <form method="post"
+                      action="/delete-history/{{ item[0] }}?user_id={{ user_id }}"
+                      onsubmit="return confirm('Delete this recommendation?');">
+
+                    <button type="submit" class="button danger">
+                        Delete
+                    </button>
+
+                </form>
+
+            </div>
+
+            {% endfor %}
+
+        {% else %}
+
+            <p>No recommendation history found.</p>
+
+        {% endif %}
+
+        <br>
+
+        <a href="/dashboard?user_id={{ user_id }}">
+            ← Back to Dashboard
+        </a>
+
+    </div>
+
+</div>
+
+</body>
+</html>
