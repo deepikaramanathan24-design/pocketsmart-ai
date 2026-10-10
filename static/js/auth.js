@@ -54,7 +54,7 @@ if (resetForm) {
     resetForm.addEventListener("submit", async (event) => {
         event.preventDefault();
 
-        const result = await postJSON("/reset-password", {
+        const result = await postJSON("/forgot-password", {
             email: document.getElementById("email").value,
             new_password: document.getElementById("new_password").value
         });
