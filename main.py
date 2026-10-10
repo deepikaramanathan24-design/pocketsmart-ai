@@ -1,569 +1,555 @@
+```python
 import json
 import sqlite3
+import os
 
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel, EmailStr
+from passlib.context import CryptContext
 
 from database import create_database, DB_NAME
 from models import (
     RegisterRequest,
     LoginRequest,
+    ResetPasswordRequest,
     HomeRequest,
     PartyRequest,
     JewelryRequest,
 )
-from gemini_generator import (
-    home_recommendation,
-    party_recommendation,
-    jewelry_recommendation,
-)
 
+app = FastAPI(title="PocketSmart AI")
 
-app = FastAPI()
-
+# Static files and HTML templates
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+# Create database tables
 create_database()
 
 
-def db():
+# --------------------------------------------------
+# DATABASE HELPERS
+# --------------------------------------------------
+
+def get_connection():
     return sqlite3.connect(DB_NAME)
 
 
-def save_recommendation(user_id, category, budget, input_details, recommendation):
-    connection = db()
-    cursor = connection.cursor()
+def get_user_by_id(user_id: int):
+    conn = get_connection()
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+
+    cursor.execute(
+        "SELECT * FROM users WHERE id = ?",
+        (user_id,)
+    )
+    user = cursor.fetchone()
+    conn.close()
+    return user
+
+
+def get_user_by_email(email: str):
+    conn = get_connection()
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+
+    cursor.execute(
+        "SELECT * FROM users WHERE email = ?",
+        (email,)
+    )
+    user = cursor.fetchone()
+    conn.close()
+    return user
+
+
+def save_recommendation(
+    user_id: int,
+    category: str,
+    budget: float,
+    user_input,
+    recommendation: str,
+):
+    conn = get_connection()
+    cursor = conn.cursor()
 
     cursor.execute(
         """
         INSERT INTO recommendations
-        (user_id, category, budget, input_details, recommendation)
+        (user_id, category, budget, input_data, recommendation)
         VALUES (?, ?, ?, ?, ?)
         """,
         (
             user_id,
             category,
             budget,
-            input_details,
+            json.dumps(user_input),
             recommendation,
         ),
     )
 
-    connection.commit()
-    connection.close()
+    conn.commit()
+    conn.close()
 
 
-# ---------------- FALLBACK RECOMMENDATIONS ----------------
+def hash_password(password: str):
+    return pwd_context.hash(password)
 
-def fallback_party(budget, event_type, guests, theme):
+
+def verify_password(password: str, hashed_password: str):
     try:
-        budget = float(budget)
-    except (TypeError, ValueError):
-        budget = 10000
-
-    if budget >= 10000:
-        return """
-1. LED Party Lights - Lighting - ₹1200
-2. Balloon Decoration - Decoration - ₹1500
-3. Party Cake - Food - ₹2200
-4. Snacks & Drinks - Food - ₹2800
-5. Theme Decoration - Decoration - ₹1800
-
-Total Estimated Cost: ₹9500
-Remaining Budget: ₹500
-"""
-
-    elif budget >= 5000:
-        return """
-1. LED Party Lights - Lighting - ₹700
-2. Balloon Decoration - Decoration - ₹800
-3. Party Cake - Food - ₹1300
-4. Snacks & Drinks - Food - ₹1400
-5. Simple Theme Decoration - Decoration - ₹600
-
-Total Estimated Cost: ₹4800
-Remaining Budget: ₹200
-"""
-
-    else:
-        return f"""
-1. Balloon Decoration - Decoration - ₹500
-2. Small Party Cake - Food - ₹800
-3. Snacks - Food - ₹700
-4. LED Lights - Lighting - ₹400
-
-Total Estimated Cost: ₹2400
-Remaining Budget: ₹{max(0, budget - 2400):.0f}
-"""
+        return pwd_context.verify(password, hashed_password)
+    except Exception:
+        return False
 
 
-def fallback_jewelry(budget, jewelry_type, occasion, style):
-    try:
-        budget = float(budget)
-    except (TypeError, ValueError):
-        budget = 10000
+# --------------------------------------------------
+# FALLBACK RECOMMENDATIONS
+# --------------------------------------------------
 
-    if budget >= 10000:
-        return """
-1. Gold Necklace - Necklace - ₹4500
-2. Gold Earrings - Earrings - ₹1800
-3. Traditional Bangles - Bangles - ₹1500
-4. Simple Ring - Ring - ₹900
+def fallback_home(budget: float, room_type: str = "Bedroom"):
+    if budget <= 10000:
+        return (
+            f"Budget-friendly {room_type} Interior Plan (Budget: ₹{budget:,.0f})\n\n"
+            "1. Wall paint and simple decoration - ₹2,000\n"
+            "2. LED lighting - ₹1,000\n"
+            "3. Curtains and bedsheet - ₹2,000\n"
+            "4. Storage and organizers - ₹2,000\n"
+            "5. Small decor items - ₹1,500\n"
+            "6. Extra budget reserve - ₹1,500\n\n"
+            "Tip: Compare prices before buying and adjust the items to your budget."
+        )
 
-Total Estimated Cost: ₹8700
-Remaining Budget: ₹1300
-"""
-
-    elif budget >= 5000:
-        return """
-1. Gold-Plated Necklace - Necklace - ₹2200
-2. Earrings - Earrings - ₹900
-3. Traditional Bangles - Bangles - ₹800
-4. Simple Ring - Ring - ₹600
-
-Total Estimated Cost: ₹4500
-Remaining Budget: ₹500
-"""
-
-    else:
-        return f"""
-1. Simple Necklace - Necklace - ₹1200
-2. Earrings - Earrings - ₹500
-3. Bangles - Bangles - ₹400
-
-Total Estimated Cost: ₹2100
-Remaining Budget: ₹{max(0, budget - 2100):.0f}
-"""
+    return (
+        f"Home Interior Plan for {room_type} (Budget: ₹{budget:,.0f})\n\n"
+        "1. Wall paint and finish - 15% of budget\n"
+        "2. Lighting - 10% of budget\n"
+        "3. Furniture - 35% of budget\n"
+        "4. Curtains and furnishings - 15% of budget\n"
+        "5. Storage - 15% of budget\n"
+        "6. Decoration and reserve - 10% of budget\n\n"
+        "Tip: Get quotations from multiple vendors before purchasing."
+    )
 
 
-# ---------------- BASIC PAGES ----------------
+def fallback_party(budget: float, occasion: str = "Birthday"):
+    return (
+        f"{occasion} Party Plan (Budget: ₹{budget:,.0f})\n\n"
+        "1. Venue or home decoration - 20% of budget\n"
+        "2. Food and refreshments - 35% of budget\n"
+        "3. Cake and desserts - 15% of budget\n"
+        "4. Decorations - 10% of budget\n"
+        "5. Games and entertainment - 10% of budget\n"
+        "6. Emergency reserve - 10% of budget\n\n"
+        "Tip: Confirm guest count first to avoid overspending."
+    )
+
+
+def fallback_jewelry(budget: float, jewelry_type: str = "Gold",
+                     occasion: str = "Wedding",
+                     style: str = "Traditional"):
+    return (
+        f"{style} {jewelry_type} Jewelry Ideas for {occasion}\n"
+        f"Budget: ₹{budget:,.0f}\n\n"
+        "Suggested budget allocation:\n"
+        "1. Main jewelry item - 50% of budget\n"
+        "2. Earrings or matching accessory - 20% of budget\n"
+        "3. Additional jewelry - 20% of budget\n"
+        "4. Reserve for price differences - 10% of budget\n\n"
+        "Tip: Check the current price, making charges, weight, and hallmark "
+        "before buying. Actual prices vary by jeweler and design."
+    )
+
+
+# --------------------------------------------------
+# HOME PAGE
+# --------------------------------------------------
 
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request):
     return templates.TemplateResponse(
-        "index.html",
-        {"request": request}
+        request=request,
+        name="index.html",
+        context={"request": request},
     )
 
+
+# --------------------------------------------------
+# LOGIN / REGISTER PAGES
+# --------------------------------------------------
 
 @app.get("/login", response_class=HTMLResponse)
 def login_page(request: Request):
     return templates.TemplateResponse(
-        "login.html",
-        {"request": request}
+        request=request,
+        name="login.html",
+        context={"request": request},
     )
 
 
 @app.get("/register", response_class=HTMLResponse)
 def register_page(request: Request):
     return templates.TemplateResponse(
-        "register.html",
-        {"request": request}
+        request=request,
+        name="register.html",
+        context={"request": request},
     )
 
 
 @app.get("/forgot-password", response_class=HTMLResponse)
 def forgot_password_page(request: Request):
     return templates.TemplateResponse(
-        "forgot_password.html",
-        {"request": request}
+        request=request,
+        name="forgot_password.html",
+        context={"request": request},
     )
 
 
-# ---------------- REGISTER ----------------
+# --------------------------------------------------
+# REGISTER
+# --------------------------------------------------
 
 @app.post("/register")
-def register(request: RegisterRequest):
-    connection = db()
-    cursor = connection.cursor()
-
+def register(data: RegisterRequest):
     try:
+        conn = get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            "SELECT id FROM users WHERE email = ?",
+            (data.email,)
+        )
+
+        if cursor.fetchone():
+            conn.close()
+            return JSONResponse(
+                {"success": False, "message": "Email already registered."},
+                status_code=400,
+            )
+
+        hashed = hash_password(data.password)
+
+        # This assumes your users table has:
+        # name, email, password columns.
         cursor.execute(
             """
             INSERT INTO users (name, email, password)
             VALUES (?, ?, ?)
             """,
-            (
-                request.name,
-                str(request.email),
-                request.password,
-            ),
+            (data.name, data.email, hashed),
         )
 
-        connection.commit()
+        conn.commit()
+        conn.close()
 
-        return RedirectResponse(
-            "/login",
-            status_code=303
-        )
-
-    except sqlite3.IntegrityError:
         return {
-            "message": "Email already registered."
+            "success": True,
+            "message": "Registration successful. Please login.",
         }
 
-    finally:
-        connection.close()
+    except Exception as exc:
+        print("REGISTER ERROR:", exc)
+        return JSONResponse(
+            {"success": False, "message": "Registration failed."},
+            status_code=500,
+        )
 
 
-# ---------------- LOGIN ----------------
+# --------------------------------------------------
+# LOGIN
+# --------------------------------------------------
 
 @app.post("/login")
-def login(request: LoginRequest):
-    connection = db()
-    cursor = connection.cursor()
+def login(data: LoginRequest):
+    try:
+        user = get_user_by_email(data.email)
 
-    cursor.execute(
-        """
-        SELECT id, name, email
-        FROM users
-        WHERE email = ? AND password = ?
-        """,
-        (
-            str(request.email),
-            request.password,
-        ),
-    )
+        if not user:
+            return JSONResponse(
+                {"success": False, "message": "Invalid email or password."},
+                status_code=401,
+            )
 
-    user = cursor.fetchone()
-    connection.close()
+        stored_password = user["password"]
 
-    if not user:
+        if not verify_password(data.password, stored_password):
+            return JSONResponse(
+                {"success": False, "message": "Invalid email or password."},
+                status_code=401,
+            )
+
         return {
-            "success": False,
-            "message": "Invalid email or password."
+            "success": True,
+            "message": "Login successful.",
+            "user_id": user["id"],
+            "name": user["name"],
+            "redirect_url": f"/dashboard?user_id={user['id']}",
         }
 
-    return {
-        "success": True,
-        "message": "Login successful",
-        "user_id": user[0],
-        "name": user[1],
-        "email": user[2]
-    }
+    except Exception as exc:
+        print("LOGIN ERROR:", exc)
+        return JSONResponse(
+            {"success": False, "message": "Login failed."},
+            status_code=500,
+        )
 
 
-# ---------------- LOGOUT ----------------
+# --------------------------------------------------
+# FORGOT PASSWORD
+# --------------------------------------------------
 
-@app.get("/logout")
-def logout():
-    return RedirectResponse(
-        "/login",
-        status_code=303
-    )
+@app.post("/forgot-password")
+def reset_password(data: ResetPasswordRequest):
+    try:
+        user = get_user_by_email(data.email)
+
+        if not user:
+            return JSONResponse(
+                {"success": False, "message": "Email not found."},
+                status_code=404,
+            )
+
+        hashed = hash_password(data.new_password)
+
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE users SET password = ? WHERE email = ?",
+            (hashed, data.email),
+        )
+        conn.commit()
+        conn.close()
+
+        return {
+            "success": True,
+            "message": "Password updated successfully.",
+        }
+
+    except Exception as exc:
+        print("RESET PASSWORD ERROR:", exc)
+        return JSONResponse(
+            {"success": False, "message": "Could not reset password."},
+            status_code=500,
+        )
 
 
-# ---------------- DASHBOARD ----------------
+# --------------------------------------------------
+# DASHBOARD
+# --------------------------------------------------
 
 @app.get("/dashboard", response_class=HTMLResponse)
 def dashboard(request: Request, user_id: int):
-    connection = db()
-    cursor = connection.cursor()
-
-    cursor.execute(
-        "SELECT id, name, email FROM users WHERE id = ?",
-        (user_id,)
-    )
-
-    user = cursor.fetchone()
-    connection.close()
+    user = get_user_by_id(user_id)
 
     if not user:
-        return RedirectResponse(
-            "/login",
-            status_code=303
-        )
+        return RedirectResponse("/login", status_code=303)
 
     return templates.TemplateResponse(
-        "dashboard.html",
-        {
-            "request": request,
-            "user": user
-        }
+        request=request,
+        name="dashboard.html",
+        context={"request": request, "user": user},
     )
 
 
-# ---------------- MODULE PAGES ----------------
+# --------------------------------------------------
+# RECOMMENDATION PAGES
+# --------------------------------------------------
 
 @app.get("/home", response_class=HTMLResponse)
 def home_page(request: Request, user_id: int):
     return templates.TemplateResponse(
-        "home.html",
-        {
-            "request": request,
-            "user_id": user_id
-        }
+        request=request,
+        name="home.html",
+        context={"request": request, "user_id": user_id},
     )
 
 
 @app.get("/party", response_class=HTMLResponse)
 def party_page(request: Request, user_id: int):
     return templates.TemplateResponse(
-        "party.html",
-        {
-            "request": request,
-            "user_id": user_id
-        }
+        request=request,
+        name="party.html",
+        context={"request": request, "user_id": user_id},
     )
 
 
 @app.get("/jewelry", response_class=HTMLResponse)
 def jewelry_page(request: Request, user_id: int):
     return templates.TemplateResponse(
-        "jewelry.html",
-        {
-            "request": request,
-            "user_id": user_id
+        request=request,
+        name="jewelry.html",
+        context={"request": request, "user_id": user_id},
+    )
+
+
+# --------------------------------------------------
+# GENERATE HOME INTERIOR RECOMMENDATION
+# --------------------------------------------------
+
+@app.post("/generate-home")
+def generate_home(data: HomeRequest):
+    try:
+        budget = float(data.budget)
+        user_id = int(data.user_id)
+
+        room_type = getattr(data, "room_type", "Bedroom")
+        if not room_type:
+            room_type = "Bedroom"
+
+        recommendation = fallback_home(budget, str(room_type))
+
+        save_recommendation(
+            user_id=user_id,
+            category="Home Interior",
+            budget=budget,
+            user_input=data.model_dump(),
+            recommendation=recommendation,
+        )
+
+        return {
+            "success": True,
+            "recommendation": recommendation,
         }
-    )
+
+    except Exception as exc:
+        print("HOME RECOMMENDATION ERROR:", exc)
+        return JSONResponse(
+            {"success": False, "message": "Could not generate recommendation."},
+            status_code=500,
+        )
 
 
-# ---------------- HISTORY ----------------
+# --------------------------------------------------
+# GENERATE PARTY RECOMMENDATION
+# --------------------------------------------------
 
-@app.post("/delete-history/{recommendation_id}")
-def delete_history(recommendation_id: int, user_id: int):
-    connection = db()
-    cursor = connection.cursor()
+@app.post("/generate-party")
+def generate_party(data: PartyRequest):
+    try:
+        budget = float(data.budget)
+        user_id = int(data.user_id)
 
-    cursor.execute(
-        """
-        DELETE FROM recommendations
-        WHERE id = ? AND user_id = ?
-        """,
-        (recommendation_id, user_id)
-    )
+        occasion = getattr(data, "occasion", "Birthday")
+        if not occasion:
+            occasion = "Birthday"
 
-    connection.commit()
-    connection.close()
+        recommendation = fallback_party(budget, str(occasion))
 
-    return RedirectResponse(
-        url=f"/history?user_id={user_id}",
-        status_code=303
-    )
-# ---------------- HISTORY PAGE ----------------
+        save_recommendation(
+            user_id=user_id,
+            category="Party Planning",
+            budget=budget,
+            user_input=data.model_dump(),
+            recommendation=recommendation,
+        )
+
+        return {
+            "success": True,
+            "recommendation": recommendation,
+        }
+
+    except Exception as exc:
+        print("PARTY RECOMMENDATION ERROR:", exc)
+        return JSONResponse(
+            {"success": False, "message": "Could not generate recommendation."},
+            status_code=500,
+        )
+
+
+# --------------------------------------------------
+# GENERATE JEWELRY RECOMMENDATION
+# --------------------------------------------------
+
+@app.post("/generate-jewelry")
+def generate_jewelry(data: JewelryRequest):
+    try:
+        budget = float(data.budget)
+        user_id = int(data.user_id)
+
+        jewelry_type = getattr(data, "jewelry_type", "Gold")
+        occasion = getattr(data, "occasion", "Wedding")
+        style = getattr(data, "style", "Traditional")
+
+        recommendation = fallback_jewelry(
+            budget,
+            str(jewelry_type),
+            str(occasion),
+            str(style),
+        )
+
+        save_recommendation(
+            user_id=user_id,
+            category="Jewelry",
+            budget=budget,
+            user_input=data.model_dump(),
+            recommendation=recommendation,
+        )
+
+        return {
+            "success": True,
+            "recommendation": recommendation,
+        }
+
+    except Exception as exc:
+        print("JEWELRY RECOMMENDATION ERROR:", exc)
+        return JSONResponse(
+            {"success": False, "message": "Could not generate recommendation."},
+            status_code=500,
+        )
+
+
+# --------------------------------------------------
+# RECOMMENDATION HISTORY
+# --------------------------------------------------
 
 @app.get("/history", response_class=HTMLResponse)
 def history_page(request: Request, user_id: int):
-
-    connection = db()
-    cursor = connection.cursor()
-
-    cursor.execute(
-        """
-        SELECT id, category, budget, input_details,
-               recommendation, created_at
-        FROM recommendations
-        WHERE user_id = ?
-        ORDER BY created_at DESC
-        """,
-        (user_id,)
-    )
-
-    recommendations = cursor.fetchall()
-    connection.close()
-
-    return templates.TemplateResponse(
-        "history.html",
-        {
-            "request": request,
-            "user_id": user_id,
-            "recommendations": recommendations
-        }
-    )
-# ---------------- HOME RECOMMENDATION ----------------
-
-@app.post("/generate-home")
-def generate_home(request: HomeRequest):
-
     try:
-        budget = float(request.budget)
-    except (TypeError, ValueError):
-        budget = 10000
+        conn = get_connection()
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
 
-    if budget >= 10000:
+        cursor.execute(
+            """
+            SELECT id, category, budget, input_data, recommendation
+            FROM recommendations
+            WHERE user_id = ?
+            ORDER BY id DESC
+            """,
+            (user_id,),
+        )
 
-        result = f"""
-1. LED Ceiling Light - Lighting - ₹1800
-2. Curtains - Decor - ₹1500
-3. Sofa Cushion Set - Furniture - ₹1200
-4. Wall Art - Decor - ₹1000
-5. Indoor Plant Set - Decor - ₹800
-6. Small Coffee Table - Furniture - ₹2995
+        recommendations = cursor.fetchall()
+        conn.close()
 
-Total Estimated Cost: ₹9295
-Remaining Budget: ₹{budget - 9295:.0f}
+        return templates.TemplateResponse(
+            request=request,
+            name="history.html",
+            context={
+                "request": request,
+                "user_id": user_id,
+                "recommendations": recommendations,
+            },
+        )
 
-Room: {request.room}
-Style: {request.style}
-"""
-
-    elif budget >= 5000:
-
-        result = f"""
-1. LED Ceiling Light - Lighting - ₹900
-2. Curtains - Decor - ₹800
-3. Wall Art - Decor - ₹700
-4. Cushion Set - Decor - ₹600
-5. Indoor Plants - Decor - ₹500
-6. Small Table - Furniture - ₹1000
-
-Total Estimated Cost: ₹4500
-Remaining Budget: ₹{budget - 4500:.0f}
-
-Room: {request.room}
-Style: {request.style}
-"""
-
-    else:
-
-        total = 2400
-        remaining = max(0, budget - total)
-
-        result = f"""
-1. LED Light - Lighting - ₹500
-2. Curtains - Decor - ₹600
-3. Wall Decor - Decor - ₹500
-4. Small Indoor Plant - Decor - ₹300
-5. Cushion Set - Decor - ₹500
-
-Total Estimated Cost: ₹{total}
-Remaining Budget: ₹{remaining:.0f}
-
-Room: {request.room}
-Style: {request.style}
-"""
-
-    message = "Home recommendations generated successfully"
-
-    save_recommendation(
-        request.user_id,
-        "Home Interior",
-        request.budget,
-        json.dumps({
-            "room": request.room,
-            "style": request.style
-        }),
-        result
-    )
-
-    return {
-        "message": message,
-        "budget": request.budget,
-        "room": request.room,
-        "style": request.style,
-        "ai_recommendations": result
-    }
+    except Exception as exc:
+        print("HISTORY ERROR:", exc)
+        return HTMLResponse(
+            "Unable to load recommendation history.",
+            status_code=500,
+        )
 
 
-@app.post("/generate-party")
-def generate_party(request: PartyRequest):
+# --------------------------------------------------
+# LOGOUT
+# --------------------------------------------------
 
-    result = fallback_party(
-        request.budget,
-        request.event_type,
-        request.guests,
-        request.theme
-    )
-
-    message = "Party recommendations generated successfully"
-
-    save_recommendation(
-        request.user_id,
-        "Party Planning",
-        request.budget,
-        json.dumps({
-            "event_type": request.event_type,
-            "guests": request.guests,
-            "theme": request.theme
-        }),
-        result
-    )
-
-    return {
-        "message": message,
-        "budget": request.budget,
-        "event_type": request.event_type,
-        "guests": request.guests,
-        "theme": request.theme,
-        "ai_recommendations": result
-    }
-
-# ---------------- JEWELRY RECOMMENDATION ----------------
-
-def fallback_jewelry(budget, jewelry_type, occasion, style):
-    try:
-        budget = float(budget)
-    except (TypeError, ValueError):
-        budget = 10000
-
-    if budget >= 10000:
-        return """
-1. Gold Necklace - Necklace - ₹4500
-2. Gold Earrings - Earrings - ₹1800
-3. Traditional Bangles - Bangles - ₹1500
-4. Simple Ring - Ring - ₹900
-
-Total Estimated Cost: ₹8700
-Remaining Budget: ₹1300
-"""
-
-    elif budget >= 5000:
-        return """
-1. Gold-Plated Necklace - Necklace - ₹2200
-2. Earrings - Earrings - ₹900
-3. Traditional Bangles - Bangles - ₹800
-4. Simple Ring - Ring - ₹600
-
-Total Estimated Cost: ₹4500
-Remaining Budget: ₹500
-"""
-
-    else:
-        total = 2100
-        remaining = max(0, budget - total)
-
-        return f"""
-1. Simple Necklace - Necklace - ₹1200
-2. Earrings - Earrings - ₹500
-3. Bangles - Bangles - ₹400
-
-Total Estimated Cost: ₹{total}
-Remaining Budget: ₹{remaining:.0f}
-"""
-
-
-@app.post("/generate-jewelry")
-def generate_jewelry(request: JewelryRequest):
-
-    result = fallback_jewelry(
-        request.budget,
-        request.jewelry_type,
-        request.occasion,
-        request.style
-    )
-
-    message = "Jewelry recommendations generated successfully"
-
-    save_recommendation(
-        request.user_id,
-        "Jewelry",
-        request.budget,
-        json.dumps({
-            "jewelry_type": request.jewelry_type,
-            "occasion": request.occasion,
-            "style": request.style
-        }),
-        result
-    )
-
-    return {
-        "message": message,
-        "budget": request.budget,
-        "jewelry_type": request.jewelry_type,
-        "occasion": request.occasion,
-        "style": request.style,
-        "ai_recommendations": result
-    }
+@app.get("/logout")
+def logout():
+    return RedirectResponse("/", status_code=303)
+```
