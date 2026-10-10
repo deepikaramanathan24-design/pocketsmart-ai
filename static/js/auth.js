@@ -41,7 +41,7 @@ if (loginForm) {
 
         document.getElementById("message").textContent = result.message;
 
-        if (result.message === "Login successful") {
+       if (result.success === true) {
             localStorage.setItem("user_id", result.user_id);
             window.location.href = "/dashboard?user_id=" + result.user_id;
         }
