@@ -1,4 +1,4 @@
-```python
+
 import json
 import sqlite3
 import os
@@ -552,4 +552,3 @@ def history_page(request: Request, user_id: int):
 @app.get("/logout")
 def logout():
     return RedirectResponse("/", status_code=303)
-```
