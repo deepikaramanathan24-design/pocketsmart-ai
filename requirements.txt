@@ -7,3 +7,4 @@ passlib[bcrypt]
 pydantic
 Pillow
 email-validator
+python-dotenv
