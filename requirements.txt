@@ -4,6 +4,7 @@ jinja2
 python-multipart
 google-genai
 passlib[bcrypt]
+bcrypt==4.0.1
 pydantic
 Pillow
 email-validator
