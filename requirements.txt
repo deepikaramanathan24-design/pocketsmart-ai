@@ -6,3 +6,4 @@ google-genai
 passlib[bcrypt]
 pydantic
 Pillow
+email-validator
